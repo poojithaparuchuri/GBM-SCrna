@@ -1,0 +1,128 @@
+---
+title: "Endothelial Cell Analysis"
+output:
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(devtools)
+library(RPresto)
+
+# Previous code
+#filtered_gbm <- readRDS("rds/filt_gbm_plots_singlecell.rds")
+
+# Extract only endothelial cell data 
+# endothelial_cluster <- subset(filtered_gbm, idents = "Endothelial")
+
+#saveRDS(endothelial_cluster, file = "rds/endothelial_cluster.rds")
+
+# Load endothelial cluster data
+endothelial_cluster <- readRDS("~/Desktop/6310/final_proj/endothelial_cluster.rds")
+
+# Check column names in the metadata
+colnames(endothelial_cluster@meta.data)
+
+# View the structure of the metadata
+head(endothelial_cluster@meta.data)
+
+# Identification of highly variable features
+endothelial_cluster <- FindVariableFeatures(endothelial_cluster, selection.method = "vst", nfeatures = 2000)
+
+# Run PCA using only variable features
+endothelial_cluster <- RunPCA(endothelial_cluster, features = VariableFeatures(object = endothelial_cluster))
+
+# Cluster cells
+endothelial_cluster <- FindNeighbors(endothelial_cluster, dims = 1:10)
+endothelial_cluster <- FindClusters(endothelial_cluster, resolution = 0.5)
+
+# UMAP
+endothelial_cluster <- RunUMAP(endothelial_cluster, dims = 1:10)
+
+# Plotting UMAPs
+# Plot UMAP by Seurat clusters
+endothelial_cluster_umap <- DimPlot(endothelial_cluster, reduction = "umap", group.by = "seurat_clusters", label = TRUE, pt.size = 2)
+ggsave("plots/endothelial_clusters_umap.png", plot = endothelial_cluster_umap, width = 15, height = 8) 
+
+# Plot UMAP by tumor location
+EC_location_cluster <- DimPlot(endothelial_cluster, reduction = "umap", group.by = "sample_type", label = TRUE, pt.size = 2, cols = c("blue", "red"))
+ggsave("plots/EC_location_cluster.png", plot = EC_location_cluster, width = 15, height = 8) 
+
+# Plot UMAP by patient cluster
+EC_patient <- endothelial_cluster
+EC_patient$patient <- ifelse(grepl("T", EC_patient$orig.ident), "patient", "peripheral")
+EC_patient$patient_id <- ifelse(grepl("R1", EC_patient$orig.ident), "1",
+                                ifelse(grepl("R2", EC_patient$orig.ident), "2",
+                                       ifelse(grepl("R3", EC_patient$orig.ident), "3",
+                                              ifelse(grepl("R4", EC_patient$orig.ident), "4", NA))))
+EC_patient_cluster <- DimPlot(EC_patient, reduction = "umap", group.by = "patient_id", label = TRUE, pt.size = 2)
+ggsave("plots/EC_patient_cluster.png", plot = EC_patient_cluster, width = 15, height = 8)
+
+
+# Relative contribution of endothelial cells from sample origin type 
+endothelial_cluster$seurat_clusters <- as.factor(endothelial_cluster$seurat_clusters)
+plot_data <- data.frame(sample_type = endothelial_cluster$sample_type, cluster = endothelial_cluster$seurat_clusters)
+
+# Stacked + percent
+png("location_cluster_stacked_bar_graph.png", width = 400, height = 800)
+ggplot(plot_data, aes(fill = sample_type, y = ..count../sum(..count..), x = cluster)) +
+  geom_bar(position = "fill", stat = "count") +
+  scale_fill_manual(values = c("red", "blue")) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 1)) +
+  labs(title = "Stacked Bar Graph of Sample Type within Seurat Clusters",
+       x = "Seurat Clusters", y = "Fraction of Cells") +
+  theme_minimal()
+dev.off()
+
+# Extract the data as a CSV file
+write.csv(plot_data, "location_cluster_stacked_bar_graph_data.csv", row.names = FALSE)
+
+# Relative contribution of endothelial cells from individual patient.
+EC_patient$seurat_clusters <- as.factor(EC_patient$seurat_clusters)
+plot_data <- data.frame(patient_id = EC_patient$patient_id, cluster = EC_patient$seurat_clusters)
+
+# Stacked + percent
+png("plots/patient_clusters_stacked_bar_graph.png", width = 400, height = 600)
+ggplot(plot_data, aes(fill = patient_id, y = ..count../sum(..count..), x = cluster)) +
+  geom_bar(position = "fill", stat = "count") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 1)) +
+  labs(title = "Stacked Bar Graph of Sample Type within Seurat Clusters",
+       x = "Seurat Clusters", y = "Fraction of Cells") +
+  theme_minimal()
+dev.off()
+
+# Heatmap -- Gene expression levels of top 50 marker genes in different endothelial subclusters.
+markers <- FindAllMarkers(endothelial_cluster, only.pos = TRUE, min.pct = 0.25)
+top50_genes <- head(markers$gene, 50)
+heatmap <- DoHeatmap(endothelial_cluster, features = top50_genes, cells = 1:500, size = 4, angle = 90) + NoLegend()
+ggsave("heatmap.png", plot = heatmap, width = 15, height = 8)
+
+# Heatmap showing top 10 enriched GO terms in different endothelial subclusters.
+```{r go-terms-heatmap}
+# Extract the top 50 marker genes
+top50_marker_genes <- markers$gene[1:50]
+
+# Extract the expression matrix for the top 50 marker genes
+expression_matrix <- as.matrix(endothelial_cluster@assays$RNA_Seq@data[top50_marker_genes, , drop = FALSE])
+
+# Calculate enrichment scores using presto
+go_enrichment <- presto::calculateGOenrichment(expression_matrix, grouping = endothelial_cluster$seurat_clusters)
+
+# Select the top 10 enriched GO terms
+top10_go_terms <- head(go_enrichment$GOBPID, 10)
+
+# Filter the data for the top 10 GO terms
+filtered_go_enrichment <- go_enrichment[go_enrichment$GOBPID %in% top10_go_terms, ]
+
+# Create a heatmap
+heatmap_data <- filtered_go_enrichment %>%
+  pivot_wider(names_from = seurat_clusters, values_from = NES) %>%
+  column_to_rownames("GOBPID")
+
+heatmap(heatmap_data, scale = "row", col = colorRampPalette(c("blue", "white", "red"))(100), margins = c(5, 10))
+ggsave("plots/go_terms_heatmap.png", width = 15, height = 8)

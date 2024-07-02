@@ -1,0 +1,22 @@
+### unable to find genes
+
+
+> #singlecell_dotplot <- DotPlot(filtered_gbm, features = marker_genes, group.by = 'cluster') + RotatedAxis()
+> 
+> # Define all genes in one list
+> all_genes <- c("CLDN5", "VWF", "CD34", "APOC1", "CD163", "F13A1", "CX3CR1", "P2RY12", "P2RY13",
++                "IL1R2", "CXCR2", "FPR2", "CD3D", "CD3E", "GZMK", "IGHG1", "IGHG3", "CD79A",
++                "HLA-DQA1", "HLA-DPB1", "FABP7", "PTPRZ1", "RGS5", "PDGFRB", "NOTCH3")
+> #DotPlot with filtered data and selected gene set, switching genes to the y-axis
+> singlecell_dotplot <- DotPlot(filtered_gbm, features = all_genes, group.by = 'ident', dot.scale = 25)
+Error in `object[[group.by, drop = TRUE]]`:
+! ‘ident’ not found in this Seurat object
+ Did you mean "orig.ident"?
+Run `rlang::last_trace()` to see where the error occurred.
+Warning messages:
+1: Could not find CX3CR1 in the default search locations, found in ‘RNA’ assay instead 
+2: Could not find P2RY12 in the default search locations, found in ‘RNA’ assay instead 
+3: Could not find P2RY13 in the default search locations, found in ‘RNA’ assay instead 
+4: Could not find CXCR2 in the default search locations, found in ‘RNA’ assay instead 
+5: Could not find FPR2 in the default search locations, found in ‘RNA’ assay instead 
+6: Could not find HLA-DPB1 in the default search locations, found in ‘RNA’ assay instead 
